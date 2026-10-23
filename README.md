@@ -77,6 +77,11 @@ The behavior was inspired by [lexima.vim](https://github.com/cohama/lexima.vim) 
         -- requires a supported filetype; command-line backspace is unchanged
         overjumps = false,
       },
+      fly = {
+        -- ([|]) -> ([])| when typing ')', without crossing ordinary text
+        -- requires a supported filetype; command-line mappings are unchanged
+        enabled = false,
+      },
       wrap = {
         -- move closing pair via motion
         ['<C-b>'] = 'motion',

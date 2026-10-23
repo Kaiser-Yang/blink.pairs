@@ -123,6 +123,33 @@ local function inside_multichar_pair(ctx, rule)
   return false
 end
 
+--- Skip only parsed, matched delimiters and whitespace on the current line.
+--- @param ctx blink.pairs.Context
+--- @param rule blink.pairs.Rule
+--- @return string? keycodes
+function ops.fly(ctx, rule)
+  if ctx.mode:match('c') or not require('blink.pairs.config').mappings.fly.enabled then return end
+  local row, col = ctx.cursor.row - 1, ctx.cursor.col
+  for _, match in ipairs(ctx.parser.get_line_matches(ctx.bufnr, row)) do
+    if match.col >= col then
+      if ctx.line:sub(col + 1, match.col):find('%S') then return end
+      local pair = ctx.parser.get_match_pair(ctx.bufnr, row, match.col)
+      if not pair then return end
+      local opening, closing = pair[1], pair[2]
+      if
+        closing.line == row
+        and closing.col == match.col
+        and opening[1] == rule.opening
+        and (closing[2] or closing[1]) == rule.closing
+        and (opening.line < row or opening.col < ctx.cursor.col)
+      then
+        return ops.shift_keycode(closing.col + #rule.closing - ctx.cursor.col)
+      end
+      col = match.col + #(match[2] or match[1])
+    end
+  end
+end
+
 --- @param ctx blink.pairs.Context
 --- @param key string
 --- @param rule blink.pairs.Rule
@@ -164,6 +191,9 @@ function ops.close_pair(ctx, key, rule)
   then
     return rule.closing
   end
+
+  local fly_keys = ops.fly(ctx, rule)
+  if fly_keys then return fly_keys end
 
   -- TODO: should these use rule.closing.len()
   -- |) -> )|
