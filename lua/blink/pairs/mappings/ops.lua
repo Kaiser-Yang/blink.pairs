@@ -77,8 +77,9 @@ function ops.on_key(key, rules)
         end
       end
 
-      --- I.e. for line 'r#"', user types '"' to close the pair
-      if ctx:is_before_cursor(rule.opening) then return ops.close_pair(ctx, key, rule) end
+      if key == rule.closing:sub(1, 1) and ctx:is_after_cursor(rule.closing, true) then
+        return ops.close_pair(ctx, key, rule)
+      end
     end
 
     -- No applicable rule found
@@ -92,6 +93,34 @@ function ops.shift_keycode(amount)
   local non_undo = vim.api.nvim_get_mode().mode ~= 'c' and '<C-g>U' or ''
   if amount > 0 then return string.rep(non_undo .. '<Right>', amount) end
   return string.rep(non_undo .. '<Left>', -amount)
+end
+
+--- Whether a multi-character closing belongs to an opening before the cursor.
+--- The textual fallback also supports HTML comments in filetypes without an internal parser.
+local function inside_multichar_pair(ctx, rule)
+  local row = ctx.cursor.row - 1
+  while row >= 0 do
+    local line = row == ctx.cursor.row - 1 and ctx:text_before_cursor()
+      or vim.api.nvim_buf_get_lines(ctx.bufnr, row, row + 1, false)[1]
+    local opening, closing = 0, 0
+    for _, item in ipairs({ { rule.opening, 'opening' }, { rule.closing, 'closing' } }) do
+      local start = 1
+      while true do
+        local pos = line:find(item[1], start, true)
+        if not pos then break end
+        if item[2] == 'opening' then
+          opening = pos
+        else
+          closing = pos
+        end
+        start = pos + #item[1]
+      end
+    end
+    if opening > 0 or closing > 0 then return opening > closing end
+    if ctx.mode:match('c') then return false end
+    row = row - 1
+  end
+  return false
 end
 
 --- @param ctx blink.pairs.Context
@@ -121,6 +150,12 @@ end
 --- @param rule blink.pairs.Rule
 function ops.close_pair(ctx, key, rule)
   if not rule.close(ctx) then return key end
+
+  if #rule.closing > 1 then
+    local offset = ctx:is_after_cursor(rule.closing) and 0 or ctx:is_after_cursor(rule.closing, true) and 1
+    if offset and inside_multichar_pair(ctx, rule) then return ops.shift_keycode(offset + #rule.closing) end
+    return key
+  end
 
   -- ( ( |) -> ( (  )|)
   if
