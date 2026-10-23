@@ -249,7 +249,7 @@ end
 --- @return blink.pairs.Rule?
 --- @return integer? closing_indent
 function ops.get_multiline_surrounding(ctx, rules)
-  if ctx.mode:match('c') or ctx.cursor.row <= 1 or ctx.cursor.col ~= 0 or ctx.line ~= '' then return end
+  if ctx.mode:match('c') or ctx.cursor.row <= 1 or ctx.line:find('%S') then return end
 
   local lines = vim.api.nvim_buf_get_lines(ctx.bufnr, ctx.cursor.row - 2, ctx.cursor.row + 1, false)
   local previous_line = lines[1]
@@ -269,6 +269,20 @@ function ops.get_multiline_surrounding(ctx, rules)
       return rule, closing_indent
     end
   end
+end
+
+--- Collapse an empty expanded pair outside the expression mapping's textlock.
+function ops.backspace_multiline()
+  local fallback = function() vim.api.nvim_feedkeys(vim.keycode('<BS>'), 'n', false) end
+  if not mappings.is_enabled() then return fallback() end
+  local ctx = require('blink.pairs.context').new()
+  local rules = rule_lib.get_all(rule_lib.parse(require('blink.pairs.config').mappings.pairs))
+  local rule, indent = ops.get_multiline_surrounding(ctx, rules)
+  if not rule then return fallback() end
+  local previous_row = ctx.cursor.row - 2
+  local previous_line = vim.api.nvim_buf_get_lines(ctx.bufnr, previous_row, previous_row + 1, false)[1]
+  vim.api.nvim_buf_set_text(ctx.bufnr, previous_row, #previous_line, previous_row + 2, indent, {})
+  vim.api.nvim_win_set_cursor(0, { previous_row + 1, #previous_line })
 end
 
 --- Finds an active backspace rule whose complete opening is immediately before the cursor.
@@ -325,8 +339,9 @@ function ops.backspace(rules)
     if not mappings.is_enabled() then return '<BS>' end
 
     local ctx = require('blink.pairs.context').new()
-    local multiline_rule, closing_indent = ops.get_multiline_surrounding(ctx, rules)
-    if multiline_rule ~= nil then return '<Del>' .. string.rep('<Del>', closing_indent) .. '<BS>' end
+    if ops.get_multiline_surrounding(ctx, rules) then
+      return "<Cmd>lua require('blink.pairs.mappings.ops').backspace_multiline()<CR>"
+    end
     local rule, surrounding_space = rule_lib.get_surrounding(ctx, rules, 'backspace')
     if rule == nil then
       if

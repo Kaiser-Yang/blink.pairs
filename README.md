@@ -22,6 +22,10 @@
 
 The behavior was inspired by [lexima.vim](https://github.com/cohama/lexima.vim) and [nvim-autopairs](https://github.com/windwp/nvim-autopairs)
 
+After expanding an empty pair with Enter, Backspace on the middle line joins it
+back into a single-line pair, with the cursor between the delimiters. The middle
+line may contain indentation, but no other text.
+
 | Before         | Input     | After          |
 |----------------|-----------|----------------|
 | `\|`           | `(`       | `(\|)`         |
