@@ -206,6 +206,54 @@ function ops.get_multiline_surrounding(ctx, rules)
   end
 end
 
+--- Finds an active backspace rule whose complete opening is immediately before the cursor.
+--- @param ctx blink.pairs.Context
+--- @param rules blink.pairs.Rule[]
+--- @return blink.pairs.Rule?
+local function get_opening_before_cursor(ctx, rules)
+  for _, rule in ipairs(rules) do
+    if ctx:is_before_cursor(rule.opening) and rule_lib.is_active(ctx, rule, 'backspace') then
+      local col, escapes = ctx.cursor.col - #rule.opening, 0
+      while col > 0 and ctx.line:sub(col, col) == '\\' do
+        escapes, col = escapes + 1, col - 1
+      end
+      if escapes % 2 == 0 then return rule end
+    end
+  end
+end
+
+--- Runs outside the expression mapping's textlock to remove a distant closing pair.
+--- @return nil
+function ops.backspace_overjumps()
+  local fallback = function() vim.api.nvim_feedkeys(vim.keycode('<BS>'), 'n', false) end
+  if not mappings.is_enabled() or not require('blink.pairs.config').mappings.backspace.overjumps then
+    return fallback()
+  end
+  local ctx = require('blink.pairs.context').new()
+  if ctx.mode:match('c') then return fallback() end
+  local rules = rule_lib.get_all(rule_lib.parse(require('blink.pairs.config').mappings.pairs))
+  local rule = get_opening_before_cursor(ctx, rules)
+  if not rule or not require('blink.pairs.watcher').attach(ctx.bufnr) then return fallback() end
+  local row, col = ctx.cursor.row - 1, ctx.cursor.col - #rule.opening
+  local pair = ctx.parser.get_match_pair(ctx.bufnr, row, col)
+  if not pair then return fallback() end
+  local opening, closing = pair[1], pair[2]
+  if
+    opening.line ~= row
+    or opening.col ~= col
+    or opening[1] ~= rule.opening
+    or (closing[2] or closing[1]) ~= rule.closing
+  then
+    return fallback()
+  end
+
+  -- Delete the closing first so the opening position stays valid. Preserve the contents and cursor.
+  vim.api.nvim_buf_set_text(ctx.bufnr, closing.line, closing.col, closing.line, closing.col + #rule.closing, {})
+  vim.cmd('undojoin')
+  vim.api.nvim_buf_set_text(ctx.bufnr, row, col, row, ctx.cursor.col, {})
+  vim.api.nvim_win_set_cursor(0, { row + 1, col })
+end
+
 --- @param rules blink.pairs.Rule[]
 function ops.backspace(rules)
   return function()
@@ -215,7 +263,16 @@ function ops.backspace(rules)
     local multiline_rule, closing_indent = ops.get_multiline_surrounding(ctx, rules)
     if multiline_rule ~= nil then return '<Del>' .. string.rep('<Del>', closing_indent) .. '<BS>' end
     local rule, surrounding_space = rule_lib.get_surrounding(ctx, rules, 'backspace')
-    if rule == nil then return '<BS>' end
+    if rule == nil then
+      if
+        not ctx.mode:match('c')
+        and require('blink.pairs.config').mappings.backspace.overjumps
+        and get_opening_before_cursor(ctx, rules)
+      then
+        return "<Cmd>lua require('blink.pairs.mappings.ops').backspace_overjumps()<CR>"
+      end
+      return '<BS>'
+    end
 
     -- ( | ) -> (|)
     -- TODO: disable in strings

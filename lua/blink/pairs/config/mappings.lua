@@ -2,6 +2,7 @@
 --- @field enabled boolean
 --- @field cmdline boolean
 --- @field disabled_filetypes string[]
+--- @field backspace { overjumps: boolean }
 --- @field wrap blink.pairs.WrapDefinitions
 --- @field pairs blink.pairs.RuleDefinitions
 
@@ -36,6 +37,10 @@ return {
   enabled = { true, 'boolean' },
   cmdline = { true, 'boolean' },
   disabled_filetypes = { {}, 'table' },
+  backspace = {
+    -- Delete a matched pair around non-empty content when just after its opening.
+    overjumps = { false, 'boolean' },
+  },
 
   wrap = {
     {
