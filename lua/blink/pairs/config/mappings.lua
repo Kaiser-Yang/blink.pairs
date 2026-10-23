@@ -106,7 +106,11 @@ return {
       ['{'] = '}',
       ["'"] = {
         { "''", "''", languages = { 'nix' } },
-        { "'''", when = function(ctx) return ctx:text_before_cursor(2) == "''" end, languages = { 'python', 'toml' } },
+        {
+          "'''", "'''",
+          when = function(ctx) return ctx:text_before_cursor(2) == "''" or ctx:is_after_cursor("'''") end,
+          languages = { 'python', 'toml' },
+        },
         {
           "'",
           enter = false,
@@ -130,8 +134,8 @@ return {
       ['"'] = {
         { 'r#"', '"#', languages = { 'rust' }, priority = 100 },
         {
-          '"""',
-          when = function(ctx) return ctx:text_before_cursor(2) == '""' end,
+          '"""', '"""',
+          when = function(ctx) return ctx:text_before_cursor(2) == '""' or ctx:is_after_cursor('"""') end,
           languages = { 'python', 'elixir', 'julia', 'kotlin', 'scala', 'toml' },
         },
         { '"', enter = false, space = false },
